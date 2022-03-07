@@ -7,6 +7,7 @@ import string
 import random
 from datetime import datetime
 from .core import PageBase, Expando
+import json
 
 try:
     import contextvars  # Python 3.7+ only.
@@ -18,19 +19,24 @@ import functools
 
 logger = logging.getLogger(__name__)
 
-
 class AsyncPage(PageBase):
-
-    def __init__(self, container, url: str):
-        self.container = container
+    def __init__(self, url: str):
         self._queue = asyncio.Queue(maxsize=1000)
         self._lock = asyncio.Lock()
+        self.data = {}
         super().__init__(url)
+
+    def _get_diff(self):
+        if len(self._changes) == 0:
+            return None
+        d = dict(d=self._changes)
+        self._changes = []
+        return d
 
     async def save(self):
         """
         """
-        p = self._diff()
+        p = self._get_diff()
         if p:
             logger.debug(p)
             await self._patch(p)
@@ -45,23 +51,21 @@ class AsyncPage(PageBase):
                     if len(op['k']) > 0 and 'd' in op:
                         self.data[op['k']] = self._make_card(op['d'], op.get('b', []))
                 else:
-                    self.container.pop(self.url, None)
-
-            await self._queue.put(ops)
+                    self.data = {}
+        await self._queue.put(ops)
 
     async def start_sync(self):
         async with self._lock:
             page_data = self.data;
-            self._queue = asyncio.Queue(maxsize=1000)
             return {'p':{'c':page_data}}
 
     async def changes(self):
-        return await self._queue.get()
-
-def random_id(prefix="", length=12):
-    assert len(prefix) == 2
-    raw_id = ''.join([random.choice('23456789' + string.ascii_uppercase) for i in range(length)])
-    return f"{prefix}{raw_id}"
+        data = await self._queue.get()
+        # self._queue.task_done()
+        return data
+    
+    def send_done(self):
+        self._queue.task_done()
 
 class Session:
     _stores = {}
@@ -72,24 +76,28 @@ class Session:
             cls._stores[session_id] = store
         return cls._stores[session_id]
 
-    def __init__(self, session_id=None):
-        self.session_id = session_id or random_id('CS', 16)
+    def __init__(self, session_id):
+        self.session_id = session_id
         self.session_start = datetime.now()
         self.pages = {}
         self.user_data = Expando()
 
     def page(self, route):
         if route not in self.pages:
-            self.pages[route] = AsyncPage(self.pages, route)
+            self.pages[route] = AsyncPage(route)
         return self.pages[route]
 
+    @property
     def user(self):
         return self.user_data
 
 class UserInfo:
-    def __init__(self, user_id=None, user_name="anon"):
-        self.user_id = user_id or 'CU{}'.format('X'*14)
-        self.user_name = user_name
+    def __init__(self, user_id=None, user_name=None):
+        self.user_id = user_id or 'WAVE_USER_ID'
+        self.user_name = user_name or 'anon'
+    
+    def anonymouse(self):
+        return self.user_id == 'WAVE_USER_ID'
 
 
 class Query:
@@ -115,7 +123,7 @@ class Query:
         self.user_info = user_info
         self.route = route
         self.session = session
-        self.user = session.user()
+        self.user = session.user
         self.task_manager = task_manager
 
     async def sleep(self, delay: float, result=None) -> Any:

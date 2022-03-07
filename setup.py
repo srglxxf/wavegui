@@ -29,8 +29,11 @@ setup(
     zip_safe=False,
     platforms='any',
     install_requires=['basepy>=0.3.4',
-        'starlette==0.13.8',
-        'uvicorn[standard]==0.12.2'
+        'starlette>=0.13.8',
+        'uvicorn[standard]>=0.12.2',
+        'itsdangerous',
+        'aiofiles',
+        'python-multipart'
         ],
     extras_require={
         'test': [
@@ -38,7 +41,7 @@ setup(
         ],
     },
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
